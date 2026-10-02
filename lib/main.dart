@@ -189,8 +189,11 @@ class _BootstrapState extends State<Bootstrap>
   }
 
   Future<void> _init() async {
-    final granted = await PermissionService.smsGranted;
-    if (!granted && mounted) await _showRationale();
+    // Show the rationale (and request) if SMS *or* the phone/call-log
+    // permission is still missing — covers upgrades that add call forwarding.
+    final smsOk = await PermissionService.smsGranted;
+    final callOk = await PermissionService.callLogGranted;
+    if ((!smsOk || !callOk) && mounted) await _showRationale();
     ServiceController.registerSmsListener();
     final settings = await AppSettings.load();
     if (settings.serviceEnabled) await ServiceController.start();
@@ -232,13 +235,16 @@ class _BootstrapState extends State<Bootstrap>
               ),
               const SizedBox(height: 12),
               const Text(
-                'To forward your SMS to Gmail, this app needs a few permissions:',
+                'To forward your SMS and calls to Gmail, this app needs a few permissions:',
                 style: TextStyle(fontSize: 14, color: Color(0xFF9090B0)),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),
               _permRow(Icons.sms_rounded, 'SMS access',
                   'Read incoming messages'),
+              const SizedBox(height: 10),
+              _permRow(Icons.call_rounded, 'Phone & call log',
+                  'Detect incoming & missed calls'),
               const SizedBox(height: 10),
               _permRow(Icons.notifications_rounded, 'Notifications',
                   'Background service notice'),
