@@ -16,6 +16,8 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // Required by the call_log plugin (uses java.time APIs on older Android).
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -47,4 +49,9 @@ android {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // Provides desugared java.time/etc. APIs on minSdk < 26 (needed by call_log).
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }

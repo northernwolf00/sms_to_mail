@@ -8,33 +8,22 @@ import 'email_service.dart';
 import 'log_service.dart';
 import 'queue_service.dart';
 
-/// Core SMS -> email pipeline, written so it can run from ANY isolate:
-///   * the UI isolate (not typical),
+/// Core event -> email pipeline, written so it can run from ANY isolate:
+///   * the UI isolate,
 ///   * the `another_telephony` background isolate (incoming SMS while closed),
-///   * the `flutter_foreground_task` isolate (periodic queue retry).
+///   * the `flutter_foreground_task` isolate (periodic call sync + queue retry).
 class SmsProcessor {
-  static Future<bool> _isOnline() async {
+  static Future<bool> isOnline() async {
     final result = await Connectivity().checkConnectivity();
     // connectivity_plus 6.x returns a List<ConnectivityResult>.
-    return !result.contains(ConnectivityResult.none) && result.isNotEmpty;
+    return result.isNotEmpty && !result.contains(ConnectivityResult.none);
   }
 
-  /// Process a freshly received SMS: try to email it now, otherwise queue it.
-  /// Always records the outcome in the log.
-  static Future<void> handleIncoming({
-    required String sender,
-    required String body,
-    required int timestampMs,
-  }) async {
-    final id = '${timestampMs}_${sender}_${body.hashCode}';
-    final entry = SmsLogEntry(
-      id: id,
-      sender: sender,
-      body: body,
-      timestamp: timestampMs,
-      status: DeliveryStatus.queued,
-    );
-
+  /// Shared delivery for any entry (SMS or call): try to email it now,
+  /// otherwise queue it. Always records the outcome in the log.
+  ///
+  /// The entry is expected to already be fully populated (kind, body, etc.).
+  static Future<void> deliver(SmsLogEntry entry) async {
     final settings = await AppSettings.load();
 
     if (!settings.isValid) {
@@ -44,8 +33,7 @@ class SmsProcessor {
       return;
     }
 
-    final online = await _isOnline();
-    if (!online) {
+    if (!await isOnline()) {
       entry.status = DeliveryStatus.queued;
       entry.error = 'Offline — queued for retry';
       await LogService.add(entry);
@@ -54,17 +42,11 @@ class SmsProcessor {
     }
 
     try {
-      await EmailService.sendSms(
-        settings,
-        sender: sender,
-        body: body,
-        timestampMs: timestampMs,
-      );
+      await EmailService.sendEntry(settings, entry);
       entry.status = DeliveryStatus.sent;
       entry.error = null;
       await LogService.add(entry);
     } catch (e) {
-      // SMTP error — keep it for retry.
       entry.status = DeliveryStatus.queued;
       entry.error = 'Send failed, queued: $e';
       await LogService.add(entry);
@@ -72,29 +54,42 @@ class SmsProcessor {
     }
   }
 
-  /// Retry everything in the queue. Called periodically by the foreground
-  /// service and once when connectivity returns. Safe to call often.
+  /// Process a freshly received SMS (respecting the forward-SMS toggle).
+  static Future<void> handleIncoming({
+    required String sender,
+    required String body,
+    required int timestampMs,
+  }) async {
+    final settings = await AppSettings.load();
+    if (!settings.forwardSms) return; // SMS forwarding disabled
+
+    final entry = SmsLogEntry(
+      id: '${timestampMs}_${sender}_${body.hashCode}',
+      sender: sender,
+      body: body,
+      timestamp: timestampMs,
+      status: DeliveryStatus.queued,
+      kind: LogKind.sms,
+    );
+    await deliver(entry);
+  }
+
+  /// Retry everything in the queue (SMS and calls alike). Called periodically
+  /// by the foreground service and once when connectivity returns.
   static Future<void> flushQueue() async {
     final pending = await QueueService.getAll();
     if (pending.isEmpty) return;
-
-    if (!await _isOnline()) return;
+    if (!await isOnline()) return;
 
     final settings = await AppSettings.load();
     if (!settings.isValid) return;
 
     for (final entry in pending) {
       try {
-        await EmailService.sendSms(
-          settings,
-          sender: entry.sender,
-          body: entry.body,
-          timestampMs: entry.timestamp,
-        );
+        await EmailService.sendEntry(settings, entry);
         await QueueService.remove(entry.id);
         await LogService.update(entry.id, status: DeliveryStatus.sent);
       } catch (e) {
-        // Still failing — leave in queue, try again next tick.
         await LogService.update(
           entry.id,
           status: DeliveryStatus.queued,
@@ -118,7 +113,6 @@ Future<void> backgroundMessageHandler(SmsMessage message) async {
     await SmsProcessor.handleIncoming(
       sender: message.address ?? 'unknown',
       body: message.body ?? '',
-      // message.date is epoch millis; fall back to "now" if absent.
       timestampMs: message.date ?? DateTime.now().millisecondsSinceEpoch,
     );
   } catch (e) {

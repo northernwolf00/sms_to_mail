@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 import '../foreground/foreground_task_handler.dart';
+import 'call_service.dart';
 import 'sms_handler.dart';
 
 /// Starts/stops the foreground service and wires up the SMS listener.
@@ -53,17 +54,23 @@ class ServiceController {
       FlutterForegroundTask.isRunningService;
 
   static Future<void> start() async {
+    // Seed the call pointer to "now" so we only forward calls from here on,
+    // and start low-latency call detection in this (main) isolate too.
+    await CallProcessor.initPointerIfUnset();
+    CallProcessor.startListening();
+
     if (await isRunning) return;
     await FlutterForegroundTask.startService(
       serviceId: 256,
       notificationTitle: 'SMS to Gmail — running',
-      notificationText: 'Forwarding incoming SMS',
+      notificationText: 'Forwarding incoming SMS & calls',
       callback: startCallback,
     );
     debugPrint('Service start requested');
   }
 
   static Future<void> stop() async {
+    await CallProcessor.stopListening();
     if (!await isRunning) return;
     await FlutterForegroundTask.stopService();
     debugPrint('Service stop requested');

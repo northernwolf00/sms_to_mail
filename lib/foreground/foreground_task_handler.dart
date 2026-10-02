@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
+import '../services/call_service.dart';
 import '../services/queue_service.dart';
 import '../services/sms_handler.dart';
 
@@ -18,25 +19,32 @@ class SmsForegroundTaskHandler extends TaskHandler {
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
     debugPrint('Foreground service started ($starter)');
-    // Attempt an immediate flush in case we booted with a backlog.
+    // Low-latency call detection while this isolate is alive.
+    CallProcessor.startListening();
+    // Catch up on any calls missed while we were down, then flush backlog.
+    await CallProcessor.syncNewCalls();
     await SmsProcessor.flushQueue();
   }
 
   /// Fires on the repeat interval configured in main.dart (every 60s).
   @override
   Future<void> onRepeatEvent(DateTime timestamp) async {
+    // Reliable fallback: poll the call log every tick in case phone_state
+    // didn't fire in the background.
+    await CallProcessor.syncNewCalls();
     await SmsProcessor.flushQueue();
     final pending = await QueueService.count();
     FlutterForegroundTask.updateService(
       notificationTitle: 'SMS to Gmail — running',
       notificationText: pending == 0
-          ? 'Forwarding incoming SMS'
-          : '$pending message(s) queued for retry',
+          ? 'Forwarding incoming SMS & calls'
+          : '$pending item(s) queued for retry',
     );
   }
 
   @override
   Future<void> onDestroy(DateTime timestamp) async {
+    await CallProcessor.stopListening();
     debugPrint('Foreground service destroyed');
   }
 

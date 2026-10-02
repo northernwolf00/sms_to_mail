@@ -3,6 +3,7 @@ import 'package:mailer/mailer.dart';
 import 'package:mailer/smtp_server.dart';
 
 import '../models/app_settings.dart';
+import '../models/sms_log_entry.dart';
 
 /// Sends email directly to Gmail's SMTP server — no backend involved.
 ///
@@ -38,24 +39,70 @@ class EmailService {
 
   static final _fmt = DateFormat('yyyy-MM-dd HH:mm:ss');
 
-  /// Sends one forwarded-SMS email. Throws [MailerException] on failure.
-  static Future<void> sendSms(
-    AppSettings settings, {
-    required String sender,
-    required String body,
-    required int timestampMs,
-  }) async {
-    final time = _fmt.format(DateTime.fromMillisecondsSinceEpoch(timestampMs));
+  static String _formatDuration(int seconds) {
+    final m = seconds ~/ 60;
+    final s = seconds % 60;
+    return '${m}m ${s.toString().padLeft(2, '0')}s';
+  }
 
+  /// Human-readable label for a raw call-type string.
+  static String callTypeLabel(String? type) => switch (type) {
+        'missed' => 'Missed',
+        'incoming' => 'Incoming (answered)',
+        'rejected' => 'Rejected',
+        'outgoing' => 'Outgoing',
+        'blocked' => 'Blocked',
+        'voiceMail' => 'Voicemail',
+        'wifiIncoming' => 'Incoming (Wi-Fi)',
+        'wifiOutgoing' => 'Outgoing (Wi-Fi)',
+        _ => 'Unknown',
+      };
+
+  /// Composes the subject + body for a log entry (SMS or call).
+  static ({String subject, String text}) _compose(SmsLogEntry e) {
+    final time = _fmt.format(e.receivedAt);
+
+    if (e.isCall) {
+      final who = (e.contactName != null && e.contactName!.isNotEmpty)
+          ? '${e.contactName} (${e.sender})'
+          : e.sender;
+      final typeLabel = callTypeLabel(e.callType);
+      final subject = switch (e.callType) {
+        'missed' => 'Missed call from $who',
+        'rejected' => 'Rejected call from $who',
+        'incoming' => 'Incoming call from $who',
+        _ => '$typeLabel call from $who',
+      };
+      final lines = <String>[
+        'Number: ${e.sender}',
+        if (e.contactName != null && e.contactName!.isNotEmpty)
+          'Name: ${e.contactName}',
+        'Time: $time',
+        'Type: $typeLabel',
+        'Duration: ${_formatDuration(e.durationSec ?? 0)}',
+      ];
+      return (subject: subject, text: lines.join('\n'));
+    }
+
+    // SMS
+    return (
+      subject: 'New SMS from ${e.sender}',
+      text: 'From: ${e.sender}\n'
+          'Time: $time\n'
+          'Message:\n'
+          '${e.body}',
+    );
+  }
+
+  /// Sends the email for a log entry (SMS or call).
+  /// Throws [MailerException] on failure.
+  static Future<void> sendEntry(AppSettings settings, SmsLogEntry entry) async {
+    final c = _compose(entry);
     final message = Message()
       ..from = Address(settings.gmailAddress.trim(), 'SMS Forwarder')
       ..recipients.add(settings.recipient.trim())
-      ..subject = 'New SMS from $sender'
-      ..text = 'From: $sender\n'
-          'Time: $time\n'
-          'Message:\n'
-          '$body';
-
+      ..subject = c.subject
+      ..text = c.text;
     await send(message, _server(settings));
   }
 
@@ -69,7 +116,6 @@ class EmailService {
       ..text = 'This is a test email from your SMS Forwarder app.\n'
           'If you can read this, SMTP is configured correctly.\n\n'
           'Sent: $now';
-
     await send(message, _server(settings));
   }
 }

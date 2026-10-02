@@ -4,12 +4,13 @@
 
 # SMS → Gmail Forwarder (Android, personal use)
 
-Forwards **every incoming SMS** to your Gmail inbox using **direct SMTP** —
-no backend server. Built for a **sideloaded APK on your own phone**, not the
-Play Store.
+Forwards **every incoming SMS** _and_ **incoming/missed call** to your Gmail
+inbox using **direct SMTP** — no backend server. Built for a **sideloaded APK
+on your own phone**, not the Play Store.
 
-For each SMS it captures the **sender number**, **body**, and **received time**,
-then emails:
+For each SMS it captures the **sender number**, **body**, and **received time**;
+for each call it captures the **caller number/name**, **time**, **type**
+(missed / answered / rejected), and **duration**. Example emails:
 
 ```
 Subject: New SMS from {sender}
@@ -18,7 +19,18 @@ Body:
   Time: {timestamp}
   Message:
   {body}
+
+Subject: Missed call from {number}
+Body:
+  Number: {number}
+  Name: {contact name, if known}
+  Time: {timestamp}
+  Type: Missed
+  Duration: 0m 00s
 ```
+
+SMS and call forwarding each have their own on/off toggle in Settings.
+Your own **outgoing** calls are not forwarded.
 
 It keeps working when the app is closed, swiped from recents, and after reboot.
 
@@ -66,9 +78,16 @@ sms_send_gmail/
   (`backgroundMessageHandler` in `sms_handler.dart`). Android's broadcast
   receiver wakes a background Dart isolate for each SMS, even when the app is
   closed.
+- **Call detection:** two complementary mechanisms (`call_service.dart`):
+  `phone_state` fires a near-instant sync right after a call ends, and the
+  foreground service **polls the device call log every 60s** as a reliable
+  fallback. `call_log` (READ_CALL_LOG) supplies the number, cached name, type
+  (missed / answered / rejected / …) and duration. A stored timestamp pointer
+  guarantees each call is emailed exactly once and the existing call history is
+  never blasted — only calls that happen after you enable forwarding.
 - **Staying alive:** `flutter_foreground_task` runs a low-priority foreground
   service so aggressive OEM task-killers don't stop the process. Every 60s it
-  also flushes the retry queue.
+  syncs new calls and flushes the retry queue.
 - **Reboot:** the foreground task is configured with `autoRunOnBoot: true`; its
   `RebootReceiver` (declared in the manifest, listening for `BOOT_COMPLETED`)
   restarts the service after reboot.

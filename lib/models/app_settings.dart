@@ -7,8 +7,14 @@ class PrefKeys {
   static const appPassword = 'app_password';
   static const recipient = 'recipient_email';
   static const serviceEnabled = 'service_enabled';
+  static const forwardSms = 'forward_sms';
+  static const forwardCalls = 'forward_calls';
   static const logEntries = 'log_entries';
   static const queueEntries = 'queue_entries';
+
+  /// Pointer: epoch-ms of the newest call already forwarded. Managed by
+  /// CallService so we only email calls that happen after forwarding is on.
+  static const lastCallTimestamp = 'last_call_timestamp';
 }
 
 /// User-entered configuration. Stored in SharedPreferences (NOT hardcoded).
@@ -23,11 +29,19 @@ class AppSettings {
   final String recipient;
   final bool serviceEnabled;
 
+  /// Forward incoming SMS to email.
+  final bool forwardSms;
+
+  /// Forward incoming/missed calls to email.
+  final bool forwardCalls;
+
   const AppSettings({
     required this.gmailAddress,
     required this.appPassword,
     required this.recipient,
     required this.serviceEnabled,
+    this.forwardSms = true,
+    this.forwardCalls = true,
   });
 
   /// Everything needed to actually send mail is present.
@@ -49,6 +63,8 @@ class AppSettings {
       appPassword: prefs.getString(PrefKeys.appPassword) ?? '',
       recipient: prefs.getString(PrefKeys.recipient) ?? '',
       serviceEnabled: prefs.getBool(PrefKeys.serviceEnabled) ?? false,
+      forwardSms: prefs.getBool(PrefKeys.forwardSms) ?? true,
+      forwardCalls: prefs.getBool(PrefKeys.forwardCalls) ?? true,
     );
   }
 
@@ -58,6 +74,8 @@ class AppSettings {
     await prefs.setString(PrefKeys.appPassword, appPassword.trim());
     await prefs.setString(PrefKeys.recipient, recipient.trim());
     await prefs.setBool(PrefKeys.serviceEnabled, serviceEnabled);
+    await prefs.setBool(PrefKeys.forwardSms, forwardSms);
+    await prefs.setBool(PrefKeys.forwardCalls, forwardCalls);
   }
 
   AppSettings copyWith({
@@ -65,12 +83,16 @@ class AppSettings {
     String? appPassword,
     String? recipient,
     bool? serviceEnabled,
+    bool? forwardSms,
+    bool? forwardCalls,
   }) {
     return AppSettings(
       gmailAddress: gmailAddress ?? this.gmailAddress,
       appPassword: appPassword ?? this.appPassword,
       recipient: recipient ?? this.recipient,
       serviceEnabled: serviceEnabled ?? this.serviceEnabled,
+      forwardSms: forwardSms ?? this.forwardSms,
+      forwardCalls: forwardCalls ?? this.forwardCalls,
     );
   }
 }

@@ -17,6 +17,12 @@ dependencies:
   # Fork of the `telephony` package, kept up to date for modern Flutter/Android.
   another_telephony: ^0.4.0
 
+  # --- Call detection + call log (forward incoming/missed calls) ---
+  # phone_state: near-real-time call state (ringing/answered/ended).
+  phone_state: ^2.0.1
+  # call_log: read device call history (number, type, duration, timestamp).
+  call_log: ^5.0.1
+
   # --- Foreground service so OEMs don't kill the process ---
   flutter_foreground_task: ^8.17.0
 

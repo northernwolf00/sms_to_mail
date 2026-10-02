@@ -6,9 +6,13 @@ import 'package:permission_handler/permission_handler.dart';
 class PermissionService {
   /// Returns true if SMS reception permissions are granted.
   static Future<bool> requestAll() async {
-    // 1) SMS (RECEIVE_SMS + READ_SMS).
-    final sms = await [
+    // 1) SMS (RECEIVE_SMS + READ_SMS) and the phone group. Because the manifest
+    //    declares both READ_PHONE_STATE and READ_CALL_LOG, requesting
+    //    Permission.phone prompts for both (call state + call history: number,
+    //    type, duration). On Android 10+ call log is its own prompt.
+    final statuses = await [
       Permission.sms,
+      Permission.phone,
     ].request();
 
     // 2) Notifications (Android 13+) — required so the foreground-service
@@ -22,8 +26,11 @@ class PermissionService {
       await FlutterForegroundTask.requestIgnoreBatteryOptimization();
     }
 
-    return sms[Permission.sms]?.isGranted ?? false;
+    return statuses[Permission.sms]?.isGranted ?? false;
   }
+
+  static Future<bool> get callLogGranted async =>
+      await Permission.phone.isGranted;
 
   static Future<bool> get smsGranted async =>
       await Permission.sms.isGranted;
