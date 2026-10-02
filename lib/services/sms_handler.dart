@@ -1,6 +1,8 @@
+import 'dart:ui';
+
 import 'package:another_telephony/telephony.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 
 import '../models/app_settings.dart';
 import '../models/sms_log_entry.dart';
@@ -109,6 +111,14 @@ class SmsProcessor {
 /// ===========================================================================
 @pragma('vm:entry-point')
 Future<void> backgroundMessageHandler(SmsMessage message) async {
+  // CRITICAL: another_telephony starts this isolate with a bare FlutterEngine
+  // that has NO plugins registered. Without these two calls, shared_preferences
+  // and connectivity_plus throw MissingPluginException here and the SMS is
+  // silently dropped whenever the app is closed/swiped. These register the
+  // Dart-side plugins for this background isolate.
+  WidgetsFlutterBinding.ensureInitialized();
+  DartPluginRegistrant.ensureInitialized();
+
   try {
     await SmsProcessor.handleIncoming(
       sender: message.address ?? 'unknown',

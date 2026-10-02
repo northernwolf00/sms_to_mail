@@ -48,3 +48,4 @@ app.*.map.json
 /android/build/
 /android/app/build/
 /android/.gradle/
+assets/icon/_raw_icon.webp

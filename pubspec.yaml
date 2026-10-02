@@ -43,6 +43,17 @@ dependencies:
 
 dev_dependencies:
   flutter_lints: ^4.0.0
+  # Generates Android launcher icons (legacy mipmaps + adaptive icon).
+  flutter_launcher_icons: ^0.14.3
 
 flutter:
   uses-material-design: true
+
+# App launcher icon config. Regenerate with:  dart run flutter_launcher_icons
+flutter_launcher_icons:
+  android: "ic_launcher"
+  ios: false
+  image_path: "assets/icon/app_icon.png"
+  min_sdk_android: 23
+  adaptive_icon_background: "assets/icon/app_icon_bg.png"
+  adaptive_icon_foreground: "assets/icon/app_icon_fg.png"
